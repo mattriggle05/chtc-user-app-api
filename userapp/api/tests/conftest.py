@@ -1,4 +1,4 @@
-from typing import Any, Generator, Callable
+from typing import Any, Generator, Callable, Optional
 import pytest
 import os
 import random
@@ -162,8 +162,8 @@ def filled_out_project(existing_admin_client: Client, project: dict) -> dict:
 def user_factory(existing_admin_client: Client):
     """Fixture to create users on demand in tests."""
 
-    def _create_user(index: int, project_id: int) -> dict:
-        user_payload = user_data_f(index, project_id)
+    def _create_user(index: int, project_id: int, submit_node_ids: Optional[list] = None) -> dict:
+        user_payload = user_data_f(index, project_id, submit_node_ids=submit_node_ids)
         response = existing_admin_client.post(
             "/users",
             json=user_payload
@@ -181,17 +181,24 @@ def user(existing_admin_client: Client, project_factory: Callable, group_factory
 
     project = project_factory()
     group = group_factory()
-    user = user_factory(0, project_id=project['id'])
 
-    # Add the group after the user is created
-    group_addition_response = existing_admin_client.post(f"/groups/{group['id']}/users", json={"user_id": user['id']})
-    assert group_addition_response.status_code == 201
+    # Tie a submit node to the group - the user is granted the group (and thus the
+    # submit node) below purely via submit node assignment, not a direct group add.
+    submit_node_response = existing_admin_client.post(
+        "/submit_nodes",
+        json={"name": f"test-submit-{random.randint(0, 10**6)}", "group_id": group['id']},
+    )
+    assert submit_node_response.status_code == 201
+    submit_node = submit_node_response.json()
+
+    user = user_factory(0, project_id=project['id'], submit_node_ids=[submit_node['id']])
 
     user = existing_admin_client.get(f"/users/{user['id']}").json()
 
     yield user
-    
+
     existing_admin_client.delete(f"/users/{user['id']}")
+    existing_admin_client.delete(f"/submit_nodes/{submit_node['id']}")
     existing_admin_client.delete(f"/groups/{group['id']}")
 
 

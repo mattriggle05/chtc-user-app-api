@@ -28,9 +28,9 @@ if config.config_file_name is not None:
 from userapp.core.models.main import Base
 from userapp.core.models.tables import (
     Group, Note, Project, SubmitNode, User, UserGroup,
-    UserNote, UserProject, UserSubmit, Token, Access
+    UserNote, UserProject, Token, Access
 )
-from userapp.core.models.views import JoinedProjectView, UserSubmitNodesView  # Import views if needed
+from userapp.core.models.views import JoinedProjectView, UserSubmitView  # Import views if needed
 
 target_metadata = Base.metadata
 

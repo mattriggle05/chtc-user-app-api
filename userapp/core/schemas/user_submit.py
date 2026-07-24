@@ -4,44 +4,21 @@ from pydantic import ConfigDict, Field
 
 from userapp.core.schemas.general import BaseModel
 
-class UserSubmitTableSchema(BaseModel):
-    """Used to represent a user-submit node association as stored in the database"""
-
-    model_config = ConfigDict(extra='ignore')
-
-    id:  Optional[int] = Field(default=None)
-    submit_node_id: int
-    user_id: int
-    for_auth_netid: bool
-    disk_quota: Optional[int] = Field(default=None)
-    hpc_diskquota: Optional[int] = Field(default=None)
-    hpc_inodequota: Optional[int] = Field(default=None)
-    hpc_joblimit: Optional[int] = Field(default=None)
-    hpc_corelimit: Optional[int] = Field(default=None)
-    hpc_fairshare: Optional[int] = Field(default=None)
-
 class UserSubmitGet(BaseModel):
+    """A submit node a user has access to, derived from group membership:
+    the submit node's own fields plus the user_id it's being viewed for.
+    Quota fields are removed for now - they will move to a dedicated table keyed
+    on (user, submit_node) in a future change."""
 
     model_config = ConfigDict(extra='ignore')
 
-    id: Optional[int] = Field(default=None)
-    submit_node_id: int
-    submit_node_name: str
     user_id: int
-    disk_quota: Optional[int] = Field(default=None)
-    hpc_diskquota: Optional[int] = Field(default=None)
-    hpc_inodequota: Optional[int] = Field(default=None)
-    hpc_joblimit: Optional[int] = Field(default=None)
-    hpc_corelimit: Optional[int] = Field(default=None)
-    hpc_fairshare: Optional[int] = Field(default=None)
+    id: int
+    name: str
+    group_id: Optional[int] = Field(default=None)
 
 class UserSubmitPost(BaseModel):
+    """Requests that the user be granted access to this submit node. Implemented
+    by adding the user to the submit node's associated group (SubmitNode.group_id)."""
 
     submit_node_id: int
-    # for_auth_netid: bool # Gets handled automatically
-    disk_quota: Optional[int] = Field(default=None)
-    hpc_diskquota: Optional[int] = Field(default=None)
-    hpc_inodequota: Optional[int] = Field(default=None)
-    hpc_joblimit: Optional[int] = Field(default=None)
-    hpc_corelimit: Optional[int] = Field(default=None)
-    hpc_fairshare: Optional[int] = Field(default=None)

@@ -69,18 +69,15 @@ class JoinedProjectView(Base):
     last_note_ticket = Column(String(9))
 
 
-class UserSubmitNodesView(Base):
+class UserSubmitView(Base):
+    """Submit nodes a user has access to, derived from group membership
+    (a user has access to a submit node iff they belong to submit_nodes.group_id)."""
     __tablename__ = 'user_submit_nodes'
     __table_args__ = {'info': dict(is_view=True)}
     user_id = Column(Integer, primary_key=True)
-    submit_node_id = Column(Integer, primary_key=True)
-    submit_node_name = Column(String(60))
-    disk_quota = Column(Integer)
-    hpc_diskquota = Column(Integer)
-    hpc_inodequota = Column(Integer)
-    hpc_joblimit = Column(Integer)
-    hpc_corelimit = Column(Integer)
-    hpc_fairshare = Column(Integer)
+    id = Column(Integer, primary_key=True)
+    name = Column(String(60))
+    group_id = Column(Integer)
 
 
 class UserApplicationView(Base):

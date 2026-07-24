@@ -9,6 +9,29 @@ from userapp.core.models.enum import RoleEnum
 from userapp.core.schemas.general import JoinedProjectView
 from userapp.core.schemas.users import UserGet, UserPost
 
+
+def create_submit_node(admin_client: Client) -> dict:
+    """Creates a submit node along with the group it depends on for assignment."""
+
+    group_response = admin_client.post(
+        "/groups",
+        json={"name": f"Test_Group_{random.randint(1, 10000000)}"},
+    )
+    assert group_response.status_code == 201, (
+        f"POST /groups should return 201, got {group_response.status_code}: {group_response.text}"
+    )
+    group = group_response.json()
+
+    response = admin_client.post(
+        "/submit_nodes",
+        json={"name": f"test-submit-{random.randint(0, 10**6)}", "group_id": group["id"]},
+    )
+    assert response.status_code == 201, (
+        f"POST /submit_nodes should return 201, got {response.status_code}: {response.text}"
+    )
+    return response.json()
+
+
 class TestUsers:
 
     def test_list_users(self, admin_client: Client, admin_user: dict, user_factory, project_factory):
@@ -29,7 +52,8 @@ class TestUsers:
 
     def test_create_user(self, admin_client: Client, project: dict):
         """Test creating a new user"""
-        user_payload = user_data_f(1, project['id'])
+        submit_node = create_submit_node(admin_client)
+        user_payload = user_data_f(1, project['id'], submit_node_ids=[submit_node['id']])
 
         response = admin_client.post(
             "/users",
@@ -42,7 +66,7 @@ class TestUsers:
             if key not in ["id", "is_pi", "submit_nodes", "date", "notes", "projects", "groups", "auth_netid", "auth_username", "username", "user_forms"]:
                 assert created_user[key] == user_payload[key], f"User {key} should match the payload"
 
-        assert set(map(lambda x: x['submit_node_id'], user_payload['submit_nodes'])) == set(map(lambda x: x['submit_node_id'], created_user['submit_nodes']))
+        assert set(map(lambda x: x['submit_node_id'], user_payload['submit_nodes'])) == set(map(lambda x: x['id'], created_user['submit_nodes']))
 
     def test_get_user(self, admin_client: Client, user_factory, project_factory):
         """Test getting a user by ID"""
@@ -64,6 +88,7 @@ class TestUsers:
 
         project = project_factory()
         user = user_factory(10, project['id'])
+        submit_node = create_submit_node(admin_client)
 
         new_name = f"Updated Name {random.randint(1, 100)}"
         update_payload = {
@@ -73,7 +98,7 @@ class TestUsers:
             "position": "POSTDOC",
             "submit_nodes": [
                 {
-                    "submit_node_id": 2 # Default is 1
+                    "submit_node_id": submit_node['id']
                 }
             ]
         }
@@ -87,21 +112,23 @@ class TestUsers:
         assert updated_data['phone1'] == update_payload['phone1'], "Phone 1 should be updated"
         assert updated_data['phone2'] == None, "Phone 2 should be updated"
         assert updated_data['position'] == update_payload['position'], "Position should be updated"
-        assert updated_data['submit_nodes'][0]['submit_node_id'] == 2, "User submit node should be updated"
+        assert updated_data['submit_nodes'][0]['id'] == submit_node['id'], "User submit node should be updated"
 
     def test_update_users_submit_nodes(self, admin_client: Client, user_factory, project_factory):
         """Test updating user's submit nodes"""
 
         project = project_factory()
         user = user_factory(10, project['id'])
+        submit_node_1 = create_submit_node(admin_client)
+        submit_node_2 = create_submit_node(admin_client)
 
         update_payload = {
             "submit_nodes": [
                 {
-                    "submit_node_id": 1
+                    "submit_node_id": submit_node_1['id']
                 },
                 {
-                    "submit_node_id": 2
+                    "submit_node_id": submit_node_2['id']
                 }
             ]
         }
@@ -111,8 +138,8 @@ class TestUsers:
         assert user_payload.status_code == 200, f"Updating a user's submit nodes should return a 200 status code, instead got {user_payload.text}"
 
         updated_data = user_payload.json()
-        updated_submit_node_ids = set(map(lambda x: x['submit_node_id'], updated_data['submit_nodes']))
-        expected_submit_node_ids = set([1, 2])
+        updated_submit_node_ids = set(map(lambda x: x['id'], updated_data['submit_nodes']))
+        expected_submit_node_ids = {submit_node_1['id'], submit_node_2['id']}
         assert updated_submit_node_ids == expected_submit_node_ids, "User submit nodes should be updated correctly"
 
     def test_update_users_submit_nodes_twice(self, admin_client: Client, user_factory, project_factory):
@@ -120,14 +147,16 @@ class TestUsers:
 
         project = project_factory()
         user = user_factory(10, project['id'])
+        submit_node_1 = create_submit_node(admin_client)
+        submit_node_2 = create_submit_node(admin_client)
 
         update_payload = {
             "submit_nodes": [
                 {
-                    "submit_node_id": 1
+                    "submit_node_id": submit_node_1['id']
                 },
                 {
-                    "submit_node_id": 2
+                    "submit_node_id": submit_node_2['id']
                 }
             ]
         }
@@ -137,14 +166,14 @@ class TestUsers:
         assert user_payload.status_code == 200, f"Updating a user's submit nodes should return a 200 status code, instead got {user_payload.text}"
 
         updated_data = user_payload.json()
-        updated_submit_node_ids = set(map(lambda x: x['submit_node_id'], updated_data['submit_nodes']))
-        expected_submit_node_ids = set([1, 2])
+        updated_submit_node_ids = set(map(lambda x: x['id'], updated_data['submit_nodes']))
+        expected_submit_node_ids = {submit_node_1['id'], submit_node_2['id']}
         assert updated_submit_node_ids == expected_submit_node_ids, "User submit nodes should be updated correctly"
 
         update_payload = {
             "submit_nodes": [
                 {
-                    "submit_node_id": 2
+                    "submit_node_id": submit_node_2['id']
                 }
             ]
         }
@@ -154,8 +183,8 @@ class TestUsers:
         assert user_payload.status_code == 200, f"Updating a user's submit nodes should return a 200 status code, instead got {user_payload.text}"
 
         updated_data = user_payload.json()
-        updated_submit_node_ids = set(map(lambda x: x['submit_node_id'], updated_data['submit_nodes']))
-        expected_submit_node_ids = set([2])
+        updated_submit_node_ids = set(map(lambda x: x['id'], updated_data['submit_nodes']))
+        expected_submit_node_ids = {submit_node_2['id']}
         assert updated_submit_node_ids == expected_submit_node_ids, "User submit nodes should be updated correctly"
 
 
@@ -238,14 +267,15 @@ class TestUsers:
 
     def test_get_user_submit_nodes(self, admin_client: Client, user_factory, filled_out_project: dict):
         """Test getting submit nodes for a user"""
-        user = user_factory(random.randint(2001, 3000), filled_out_project['id'])
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(2001, 3000), filled_out_project['id'], submit_node_ids=[submit_node['id']])
 
         response = admin_client.get(f"/users/{user['id']}/submit_nodes")
 
         assert response.status_code == 200, f"Getting user submit nodes should return a 200 status code, instead got {response.text}"
         submit_nodes = response.json()
         assert len(submit_nodes) > 0, "User should have at least one submit node"
-        assert user['submit_nodes'][0]['submit_node_id'] in map(lambda x: x['submit_node_id'], submit_nodes), "User's submit nodes should include those from the filled out project"
+        assert user['submit_nodes'][0]['id'] in map(lambda x: x['id'], submit_nodes), "User's submit nodes should include those from the filled out project"
 
     def test_get_user_groups_simple(self, admin_client: Client, user_factory, filled_out_project: dict):
         """Test getting groups for a user"""

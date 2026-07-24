@@ -12,9 +12,20 @@ from userapp.api.tests.conftest import _make_auth_client
 
 
 def create_submit_node(admin_client: Client) -> dict:
+    """Creates a submit node along with the group it depends on for assignment."""
+
+    group_response = admin_client.post(
+        "/groups",
+        json={"name": f"Test_Group_{random.randint(1, 10000000)}"},
+    )
+    assert group_response.status_code == 201, (
+        f"POST /groups should return 201, got {group_response.status_code}: {group_response.text}"
+    )
+    group = group_response.json()
+
     response = admin_client.post(
         "/submit_nodes",
-        json={"name": f"form-submit-node-{random.randint(0, 10**6)}"},
+        json={"name": f"form-submit-node-{random.randint(0, 10**6)}", "group_id": group["id"]},
     )
     assert response.status_code == 201, (
         f"POST /submit_nodes should return 201, got {response.status_code}: {response.text}"
@@ -376,15 +387,16 @@ class TestPreserveExistingData:
         user_post_approval = user_post_approval_response.json()
 
         assert user_post_approval["active"]
-        assert len(user_post_approval["groups"]) == 0, "User should not have any groups post approval when preserve_existing_data is False"
+        # The user's only group membership now comes from the approved submit node's group
+        assert len(user_post_approval["groups"]) == 1, "User should have exactly the approved submit node's group post approval when preserve_existing_data is False"
         assert len(user_post_approval["projects"]) == 1, "User should have exactly 1 project post approval when preserve_existing_data is False"
         assert user_post_approval["projects"][0]["project_id"] == original_project["id"], "User's project should be the approved project post approval when preserve_existing_data is False"
         assert len(user_post_approval["submit_nodes"]) == 1, "User should have exactly 1 submit node post approval when preserve_existing_data is False"
-        assert user_post_approval["submit_nodes"][0]["submit_node_name"] == original_submit_node["name"], "User's submit node should be the approved submit node post approval when preserve_existing_data is False"
+        assert user_post_approval["submit_nodes"][0]["name"] == original_submit_node["name"], "User's submit node should be the approved submit node post approval when preserve_existing_data is False"
 
         # Check the new projects didn't collide with the old somehow
         assert user_post_approval["projects"][0]["project_id"] != user["projects"][0]["project_id"]
-        assert user_post_approval["submit_nodes"][0]["submit_node_name"] != user["submit_nodes"][0]["submit_node_name"]
+        assert user_post_approval["submit_nodes"][0]["name"] != user["submit_nodes"][0]["name"]
 
     def test_approve_with_preserve_keeps_existing_data(
             self,
@@ -424,11 +436,11 @@ class TestPreserveExistingData:
         assert len(user_post_approval["projects"]) == len(user['projects'])
         assert user_post_approval["projects"][0]["project_id"] == user["projects"][0]["project_id"]
         assert len(user_post_approval["submit_nodes"]) == len(user['submit_nodes'])
-        assert user_post_approval["submit_nodes"][0]["submit_node_name"] == user["submit_nodes"][0]["submit_node_name"]
+        assert user_post_approval["submit_nodes"][0]["name"] == user["submit_nodes"][0]["name"]
 
         # Check the new projects didn't collide with the old somehow
         assert user_post_approval["projects"][0]["project_id"] != original_project["id"]
-        assert user_post_approval["submit_nodes"][0]["submit_node_name"] != original_submit_node["name"]
+        assert user_post_approval["submit_nodes"][0]["name"] != original_submit_node["name"]
 
 
 class TestUserFormTriggers:
@@ -524,7 +536,7 @@ class TestUserFormTriggers:
 
         assert updated_user["active"] is True
         assert any(project_membership["project_id"] == project["id"] for project_membership in updated_user["projects"])
-        assert any(user_submit["submit_node_name"] == submit_node["name"] for user_submit in updated_user["submit_nodes"])
+        assert any(user_submit["name"] == submit_node["name"] for user_submit in updated_user["submit_nodes"])
 
 
 @pytest.fixture
