@@ -86,7 +86,7 @@ class SubmitNode(Base):
     __tablename__ = 'submit_nodes'
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(60))
-    group_id = Column(Integer, ForeignKey('groups.id', ondelete='SET NULL'), nullable=True, index=True)
+    group_id = Column(Integer, ForeignKey('groups.id', ondelete='SET NULL'), index=True)
 
 
 class User(Base):

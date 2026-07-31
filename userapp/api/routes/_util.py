@@ -9,15 +9,16 @@ from userapp.core.schemas.user_group import UserGroupPatch
 from userapp.core.schemas.user_submit import UserSubmitPost
 
 
-async def _patch_user_submit_nodes(session: AsyncSession, user: User, new_submit_nodes: list[UserSubmitPost]) -> None:
-    """Ensures the user's group memberships match the requested submit nodes.
-
-    Submit node access is derived from group membership (SubmitNode.group_id), so
-    granting/revoking a submit node means adding/removing the user from that
-    submit node's group. A submit node's group is only removed if no other
-    requested submit node still depends on it, and groups unrelated to any
-    submit node are never touched.
-    """
+async def _patch_user_submit_nodes(
+    session: AsyncSession,
+    user: User,
+    new_submit_nodes: list[UserSubmitPost],
+) -> None:
+    """Ensures the user's group memberships match the requested submit nodes. Submit node
+    access is derived from group membership (SubmitNode.group_id), so granting/revoking a
+    submit node means adding/removing the user from that submit node's group. A submit node's
+    group is only removed if no other requested submit node still depends on it, and groups
+    unrelated to any submit node are never touched."""
 
     requested_ids = {sn.submit_node_id for sn in new_submit_nodes}
 

@@ -74,7 +74,11 @@ class UserSubmitView(Base):
     (a user has access to a submit node iff they belong to submit_nodes.group_id)."""
     __tablename__ = 'user_submit_nodes'
     __table_args__ = {'info': dict(is_view=True)}
+
+    # No ForeignKey declarations — this is a view; FK constraints don't exist on it.
     user_id = Column(Integer, primary_key=True)
+
+    # From SubmitNode
     id = Column(Integer, primary_key=True)
     name = Column(String(60))
     group_id = Column(Integer)
