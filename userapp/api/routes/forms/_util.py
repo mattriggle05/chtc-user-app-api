@@ -100,9 +100,9 @@ async def on_user_form_accept(session: AsyncSession, form_id: int, form: UserFor
                 is_primary=True,
             ),
         )
-        # Update to the set of approved submit nodes
+        # Grant access to the approved submit nodes via their associated groups
         await _patch_user_submit_nodes(session, user, form.submit_nodes)
-    
+
     # Try sending the user an email
     try:
         text = format_escaped_template(

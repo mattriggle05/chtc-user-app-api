@@ -9,6 +9,7 @@ class SubmitNodeTableSchema(BaseModel):
 
     id: Optional[int] = Field(default=None)
     name: str
+    group_id: Optional[int] = Field(default=None)
 
 class SubmitNodeGet(SubmitNodeTableSchema):
     """Exact same as SubmitNodeTableSchema for now, but kept separate for future changes"""
@@ -16,6 +17,8 @@ class SubmitNodeGet(SubmitNodeTableSchema):
 
 class SubmitNodePost(BaseModel):
     name: str
+    group_id: Optional[int] = Field(default=None)
 
 class SubmitNodePatch(BaseModel):
     name: str
+    group_id: Optional[int] = Field(default=None)
