@@ -12,6 +12,10 @@ class UserSubmitGet(BaseModel):
     # From UserGroup
     user_id: int
 
+    # Legacy names for the two fields below, kept for backwards compatibility
+    submit_node_id: int
+    submit_node_name: str
+
     # From SubmitNode
     id: int
     name: str

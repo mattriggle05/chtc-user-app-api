@@ -78,6 +78,11 @@ class UserSubmitView(Base):
     # No ForeignKey declarations — this is a view; FK constraints don't exist on it.
     user_id = Column(Integer, primary_key=True)
 
+    # Legacy names for the two columns below, kept so existing consumers of this view - and
+    # anything filtering /users/{id}/submit_nodes on them - keep working.
+    submit_node_id = Column(Integer)
+    submit_node_name = Column(String(60))
+
     # From SubmitNode
     id = Column(Integer, primary_key=True)
     name = Column(String(60))

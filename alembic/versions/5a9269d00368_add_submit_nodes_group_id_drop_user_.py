@@ -86,10 +86,13 @@ def upgrade() -> None:
     op.drop_index(op.f('ix_user_submits_submit_node_id'), table_name='user_submits')
     op.drop_table('user_submits')
 
-    # Recreate the view, now sourced from group membership.
+    # Recreate the view, now sourced from group membership. submit_node_id/submit_node_name
+    # duplicate id/name under their old names so existing consumers of this view keep working -
+    # only the quota columns, which move to their own table later, are gone.
     op.execute("""
         CREATE VIEW user_submit_nodes AS
-        SELECT ug.user_id, sn.id, sn.name, sn.group_id
+        SELECT ug.user_id, sn.id AS submit_node_id, sn.name AS submit_node_name,
+               sn.id, sn.name, sn.group_id
         FROM user_groups ug
         JOIN submit_nodes sn ON sn.group_id = ug.group_id
     """)

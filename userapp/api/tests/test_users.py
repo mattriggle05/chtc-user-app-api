@@ -277,6 +277,25 @@ class TestUsers:
         assert len(submit_nodes) > 0, "User should have at least one submit node"
         assert user['submit_nodes'][0]['id'] in map(lambda x: x['id'], submit_nodes), "User's submit nodes should include those from the filled out project"
 
+    def test_get_user_submit_nodes_legacy_fields(self, admin_client: Client, user_factory, filled_out_project: dict):
+        """The pre-group submit_node_id/submit_node_name field names are still served and filterable"""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(3001, 4000), filled_out_project['id'], submit_node_ids=[submit_node['id']])
+
+        response = admin_client.get(f"/users/{user['id']}/submit_nodes")
+
+        assert response.status_code == 200, f"Getting user submit nodes should return a 200 status code, instead got {response.text}"
+        returned = next(sn for sn in response.json() if sn['id'] == submit_node['id'])
+        assert returned['submit_node_id'] == returned['id'], "submit_node_id should mirror id"
+        assert returned['submit_node_name'] == returned['name'] == submit_node['name'], "submit_node_name should mirror name"
+
+        # Filtering on the legacy column name should still resolve against the view
+        filtered = admin_client.get(f"/users/{user['id']}/submit_nodes?submit_node_name=eq.{submit_node['name']}")
+
+        assert filtered.status_code == 200, f"Filtering on submit_node_name should return a 200 status code, instead got {filtered.text}"
+        assert [sn['submit_node_id'] for sn in filtered.json()] == [submit_node['id']], "Filtering on submit_node_name should return just the matching submit node"
+
     def test_get_user_groups_simple(self, admin_client: Client, user_factory, filled_out_project: dict):
         """Test getting groups for a user"""
         user = user_factory(random.randint(3001, 4000), filled_out_project['id'])
@@ -334,6 +353,110 @@ class TestUsers:
 
         updated_data = user_payload.json()
         assert len(updated_data['submit_nodes']) > 0, "User's submit nodes should not be removed when patching with an empty list"
+
+
+class TestSubmitNodeGroupMembership:
+    """Submit node access is derived from group membership, so the group endpoints and the
+    submit_nodes field on /users are two views of the same rows - these cover both directions."""
+
+    def _submit_node_ids(self, admin_client: Client, user_id: int) -> set:
+        response = admin_client.get(f"/users/{user_id}/submit_nodes")
+        assert response.status_code == 200, f"Getting user submit nodes should return a 200 status code, instead got {response.text}"
+        return {submit_node['id'] for submit_node in response.json()}
+
+    def _group_ids(self, admin_client: Client, user_id: int) -> set:
+        response = admin_client.get(f"/users/{user_id}/groups")
+        assert response.status_code == 200, f"Getting user groups should return a 200 status code, instead got {response.text}"
+        return {group['group_id'] for group in response.json()}
+
+    def test_group_membership_grants_submit_node(self, admin_client: Client, user_factory, project: dict):
+        """Adding a user to a submit node's group grants access to that node"""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(4001, 5000), project['id'])
+
+        assert submit_node['id'] not in self._submit_node_ids(admin_client, user['id']), "User should start without access to the submit node"
+
+        response = admin_client.post(f"/groups/{submit_node['group_id']}/users", json={"user_id": user['id']})
+
+        assert response.status_code == 201, f"Adding a user to a group should return a 201 status code, instead got {response.text}"
+        assert submit_node['id'] in self._submit_node_ids(admin_client, user['id']), "Group membership alone should grant access to the submit node"
+
+    def test_removing_group_membership_revokes_submit_node(self, admin_client: Client, user_factory, project: dict):
+        """Removing a user from a submit node's group revokes access to that node"""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(5001, 6000), project['id'], submit_node_ids=[submit_node['id']])
+
+        response = admin_client.delete(f"/groups/{submit_node['group_id']}/users/{user['id']}")
+
+        assert response.status_code == 204, f"Removing a user from a group should return a 204 status code, instead got {response.text}"
+        assert submit_node['id'] not in self._submit_node_ids(admin_client, user['id']), "Losing the group membership should revoke access to the submit node"
+
+    def test_assigning_submit_node_adds_group_membership(self, admin_client: Client, user_factory, project: dict):
+        """Assigning a submit node is stored as membership in that node's group"""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(6001, 7000), project['id'], submit_node_ids=[submit_node['id']])
+
+        assert submit_node['group_id'] in self._group_ids(admin_client, user['id']), "Assigning a submit node should add the user to its group"
+
+    def test_patching_submit_nodes_leaves_unrelated_groups(self, admin_client: Client, user_factory, project: dict, group: dict):
+        """Revoking submit nodes only removes groups that a submit node depends on"""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(7001, 8000), project['id'], submit_node_ids=[submit_node['id']])
+
+        # A group with no submit node attached to it - membership here is unrelated to node access
+        group_addition = admin_client.post(f"/groups/{group['id']}/users", json={"user_id": user['id']})
+        assert group_addition.status_code == 201, f"Adding a user to a group should return a 201 status code, instead got {group_addition.text}"
+
+        response = admin_client.patch(f"/users/{user['id']}", json={"submit_nodes": []})
+
+        assert response.status_code == 200, f"Clearing a user's submit nodes should return a 200 status code, instead got {response.text}"
+
+        group_ids = self._group_ids(admin_client, user['id'])
+        assert submit_node['group_id'] not in group_ids, "The submit node's group should be removed when its node is revoked"
+        assert group['id'] in group_ids, "A group with no submit node attached should be left alone"
+
+    def test_submit_nodes_sharing_a_group_are_granted_together(self, admin_client: Client, user_factory, project: dict, group: dict):
+        """Two submit nodes pointed at one group cannot be granted independently"""
+
+        shared_nodes = []
+        for _ in range(2):
+            response = admin_client.post(
+                "/submit_nodes",
+                json={"name": f"test-submit-{random.randint(0, 10**6)}", "group_id": group['id']},
+            )
+            assert response.status_code == 201, f"POST /submit_nodes should return 201, got {response.status_code}: {response.text}"
+            shared_nodes.append(response.json())
+
+        user = user_factory(random.randint(8001, 9000), project['id'], submit_node_ids=[shared_nodes[0]['id']])
+
+        submit_node_ids = self._submit_node_ids(admin_client, user['id'])
+        assert {node['id'] for node in shared_nodes} <= submit_node_ids, "Granting one node should grant every node sharing its group"
+
+    def test_patching_unknown_submit_node_is_rejected(self, admin_client: Client, user_factory, project: dict):
+        """A submit_node_id that doesn't exist is rejected rather than silently ignored"""
+
+        user = user_factory(random.randint(9001, 10000), project['id'])
+
+        response = admin_client.patch(f"/users/{user['id']}", json={"submit_nodes": [{"submit_node_id": 10 ** 8}]})
+
+        assert response.status_code == 400, f"Patching an unknown submit node should return a 400 status code, instead got {response.text}"
+
+    def test_patching_submit_node_without_a_group_is_rejected(self, admin_client: Client, user_factory, project: dict):
+        """A submit node with no group has nowhere to record membership, so it cannot be assigned"""
+
+        response = admin_client.post("/submit_nodes", json={"name": f"test-submit-{random.randint(0, 10**6)}"})
+        assert response.status_code == 201, f"POST /submit_nodes should return 201, got {response.status_code}: {response.text}"
+        submit_node = response.json()
+        assert submit_node['group_id'] is None, "Submit node should have been created without a group"
+
+        user = user_factory(random.randint(10001, 11000), project['id'])
+        response = admin_client.patch(f"/users/{user['id']}", json={"submit_nodes": [{"submit_node_id": submit_node['id']}]})
+
+        assert response.status_code == 400, f"Patching a submit node with no group should return a 400 status code, instead got {response.text}"
 
 
 def schema_user_data(**overrides):
