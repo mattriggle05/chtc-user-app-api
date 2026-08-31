@@ -1,42 +1,70 @@
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from userapp.api.util import create_one_endpoint
-from userapp.core.models.tables import UserSubmit, User, UserProject, UserGroup
+from userapp.core.models.tables import User, UserProject, UserGroup, SubmitNode
 from userapp.core.models.views import JoinedProjectView, UserGroupView
 from userapp.core.schemas.user_project import UserProjectPatch
 from userapp.core.schemas.user_group import UserGroupPatch
-from userapp.core.schemas.user_submit import UserSubmitTableSchema, UserSubmitPost
+from userapp.core.schemas.user_submit import UserSubmitPost
 
 
-async def _patch_user_submit_nodes(session: AsyncSession, user: User, new_submit_nodes: list[UserSubmitPost]):
-    """Updates the passed in user to match the provided list of submit_nodes"""
+async def _patch_user_submit_nodes(
+    session: AsyncSession,
+    user: User,
+    new_submit_nodes: list[UserSubmitPost],
+) -> None:
+    """Ensures the user's group memberships match the requested submit nodes. Submit node
+    access is derived from group membership (SubmitNode.group_id), so granting/revoking a
+    submit node means adding/removing the user from that submit node's group. A submit node's
+    group is only removed if no other requested submit node still depends on it, and groups
+    unrelated to any submit node are never touched."""
 
-    # Delete the submit nodes that are not in the list of new submit nodes
-    for existing_submit_node in user.submit_nodes:
-        if existing_submit_node.submit_node_id not in [sn.submit_node_id for sn in new_submit_nodes]:
-            delete_stmt = (
-                UserSubmit.__table__.delete()
-                .where(UserSubmit.user_id == user.id)
-                .where(UserSubmit.submit_node_id == existing_submit_node.submit_node_id)
+    requested_ids = {sn.submit_node_id for sn in new_submit_nodes}
+
+    submit_nodes = (await session.execute(
+        select(SubmitNode).where(SubmitNode.id.in_(requested_ids))
+    )).scalars().all() if requested_ids else []
+    submit_nodes_by_id = {sn.id: sn for sn in submit_nodes}
+
+    missing_ids = requested_ids - submit_nodes_by_id.keys()
+    if missing_ids:
+        raise HTTPException(status_code=400, detail=f"Unknown submit node id(s): {sorted(missing_ids)}")
+
+    ungrouped = [sn.name for sn in submit_nodes_by_id.values() if sn.group_id is None]
+    if ungrouped:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Submit node(s) {ungrouped} have no associated group and cannot be assigned",
+        )
+
+    target_group_ids = {sn.group_id for sn in submit_nodes_by_id.values()}
+
+    # Every group_id that any submit node depends on - scopes which of the
+    # user's current groups are "submit node groups" eligible for removal.
+    submit_node_group_ids = set((await session.execute(
+        select(SubmitNode.group_id).where(SubmitNode.group_id.isnot(None))
+    )).scalars().all())
+
+    current_group_ids = set((await session.execute(
+        select(UserGroup.group_id).where(UserGroup.user_id == user.id)
+    )).scalars().all())
+
+    to_add = target_group_ids - current_group_ids
+    to_remove = (current_group_ids & submit_node_group_ids) - target_group_ids
+
+    for group_id in to_add:
+        session.add(UserGroup(user_id=user.id, group_id=group_id))
+
+    if to_remove:
+        await session.execute(
+            delete(UserGroup).where(
+                UserGroup.user_id == user.id,
+                UserGroup.group_id.in_(to_remove),
             )
-            await session.execute(delete_stmt)
+        )
 
-    # Add the missing submit nodes
-    for submit_node in new_submit_nodes:
-
-        if submit_node.submit_node_id in [sn.submit_node_id for sn in user.submit_nodes]:
-            continue  # Already exists
-
-        # Create nodes for both auth_netid True and False to simplify logic
-        for for_auth_netid in [True, False]:
-            user_submit_model = UserSubmitTableSchema(
-                user_id=user.id,
-                for_auth_netid=for_auth_netid,
-                **submit_node.model_dump(),
-            )
-            await create_one_endpoint(session, UserSubmit, user_submit_model)
+    await session.flush()
 
 
 async def _patch_user_project(

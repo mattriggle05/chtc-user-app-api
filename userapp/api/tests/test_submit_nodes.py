@@ -4,6 +4,80 @@ import random
 from httpx import Client
 
 
+def create_submit_node(admin_client: Client) -> dict:
+    """Creates a submit node along with the group it depends on for assignment."""
+
+    group_response = admin_client.post(
+        "/groups",
+        json={"name": f"Test_Group_{random.randint(1, 10000000)}"},
+    )
+    assert group_response.status_code == 201, (
+        f"POST /groups should return 201, got {group_response.status_code}: {group_response.text}"
+    )
+    group = group_response.json()
+
+    response = admin_client.post(
+        "/submit_nodes",
+        json={"name": f"test-submit-{random.randint(0, 10**6)}", "group_id": group["id"]},
+    )
+    assert response.status_code == 201, (
+        f"POST /submit_nodes should return 201, got {response.status_code}: {response.text}"
+    )
+    return response.json()
+
+
+class TestSubmitNodeGroups:
+    """A submit node's group is what carries access to it, so the two have to stay in step."""
+
+    def test_create_submit_node_with_unknown_group_is_rejected(self, admin_client: Client):
+        """group_id has to reference a real group."""
+
+        response = admin_client.post(
+            "/submit_nodes",
+            json={"name": f"test-submit-{random.randint(0, 10**6)}", "group_id": 10 ** 8},
+        )
+
+        assert response.status_code == 400, (
+            f"POST /submit_nodes with an unknown group_id should return 400, got {response.status_code}: {response.text}"
+        )
+
+    def test_deleting_the_group_revokes_submit_node_access(self, admin_client: Client, user_factory, project: dict):
+        """Deleting a group detaches its submit node and takes every user's access with it."""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(11001, 12000), project['id'], submit_node_ids=[submit_node['id']])
+
+        delete_response = admin_client.delete(f"/groups/{submit_node['group_id']}")
+
+        assert delete_response.status_code == 204, (
+            f"Admin DELETE /groups/{submit_node['group_id']} should return 204, got {delete_response.status_code}: {delete_response.text}"
+        )
+
+        node_response = admin_client.get(f"/submit_nodes?id=eq.{submit_node['id']}")
+        assert node_response.status_code == 200, f"GET /submit_nodes should return 200, got {node_response.text}"
+        assert node_response.json()[0]['group_id'] is None, "Deleting the group should leave the submit node without one"
+
+        user_nodes_response = admin_client.get(f"/users/{user['id']}/submit_nodes")
+        assert user_nodes_response.status_code == 200, f"GET /users/{user['id']}/submit_nodes should return 200, got {user_nodes_response.text}"
+        assert submit_node['id'] not in [node['id'] for node in user_nodes_response.json()], "Deleting the group should revoke access to its submit node"
+
+    def test_deleting_the_submit_node_keeps_group_membership(self, admin_client: Client, user_factory, project: dict):
+        """Deleting a submit node leaves its group, and the users in it, alone."""
+
+        submit_node = create_submit_node(admin_client)
+        user = user_factory(random.randint(12001, 13000), project['id'], submit_node_ids=[submit_node['id']])
+
+        delete_response = admin_client.delete(f"/submit_nodes/{submit_node['id']}")
+
+        assert delete_response.status_code == 204, (
+            f"Admin DELETE /submit_nodes/{submit_node['id']} should return 204, got {delete_response.status_code}: {delete_response.text}"
+        )
+
+        groups_response = admin_client.get(f"/users/{user['id']}/groups")
+        assert groups_response.status_code == 200, f"GET /users/{user['id']}/groups should return 200, got {groups_response.text}"
+        assert submit_node['group_id'] in [group['group_id'] for group in groups_response.json()], "Deleting a submit node should not remove its group membership"
+
+
 class TestSubmitNodesSecurity:
 
     def test_get_submit_nodes_requires_authentication(self, api_client: Client):

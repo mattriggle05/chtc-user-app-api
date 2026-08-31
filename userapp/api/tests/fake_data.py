@@ -44,7 +44,7 @@ def project_data_f(
     }
 
 
-def user_data_f(index: int, primary_project_id, is_admin=False, username: Optional[str] = None) -> dict:
+def user_data_f(index: int, primary_project_id, is_admin=False, username: Optional[str] = None, submit_node_ids: Optional[list[int]] = None) -> dict:
     """
     Generate a unique user payload for testing, based on the UserBase schema.
     """
@@ -65,9 +65,7 @@ def user_data_f(index: int, primary_project_id, is_admin=False, username: Option
         "primary_project_id": primary_project_id,
         "primary_project_role": RoleEnum.MEMBER.name,
         "submit_nodes": [
-            {
-                "submit_node_id": 1
-            }
+            {"submit_node_id": submit_node_id} for submit_node_id in (submit_node_ids or [])
         ]
     }
 

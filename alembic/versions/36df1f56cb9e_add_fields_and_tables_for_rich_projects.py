@@ -1,7 +1,7 @@
 """add fields and tables for rich projects
 
 Revision ID: 36df1f56cb9e
-Revises: f2ec55925c4c
+Revises: 5a9269d00368
 Create Date: 2026-06-23 14:21:25.181927
 
 """
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '36df1f56cb9e'
-down_revision: Union[str, Sequence[str], None] = 'f2ec55925c4c'
+down_revision: Union[str, Sequence[str], None] = '5a9269d00368'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
