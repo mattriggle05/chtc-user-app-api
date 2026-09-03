@@ -19,7 +19,13 @@ router = APIRouter(
 )
 
 
+# Static reference data seeded by migration (~145 rows). The default page_size is
+# large enough to return the whole table in one request, since callers populate a
+# picker from it; X-Total-Count still reports the true total for anyone paging.
+DEFAULT_PAGE_SIZE = 500
+
+
 @router.get("")
-async def get_college_and_departments(response: Response, page: int = 0, page_size: int = 100, filter_query_params=Depends(get_filter_query_params), session=Depends(session_generator), is_authenticated=Depends(check_is_authenticated)) -> list[CollegeAndDepartmentGet]:
+async def get_college_and_departments(response: Response, page: int = 0, page_size: int = DEFAULT_PAGE_SIZE, filter_query_params=Depends(get_filter_query_params), session=Depends(session_generator), is_authenticated=Depends(check_is_authenticated)) -> list[CollegeAndDepartmentGet]:
     """List the college/department reference table (read-only lookup)."""
-    return await list_endpoint(session, CollegeAndDepartmentTable, response, filter_query_params, page, page_size)
+    return await list_endpoint(session, CollegeAndDepartmentTable, response, filter_query_params, page, page_size, default_order_by=[CollegeAndDepartmentTable.college, CollegeAndDepartmentTable.department])

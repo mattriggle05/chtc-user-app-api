@@ -19,7 +19,13 @@ router = APIRouter(
 )
 
 
+# Static reference data seeded by migration (~1650 rows). The default page_size is
+# large enough to return the whole table in one request, since callers populate a
+# picker from it; X-Total-Count still reports the true total for anyone paging.
+DEFAULT_PAGE_SIZE = 2000
+
+
 @router.get("")
-async def get_fields_of_science(response: Response, page: int = 0, page_size: int = 100, filter_query_params=Depends(get_filter_query_params), session=Depends(session_generator), is_authenticated=Depends(check_is_authenticated)) -> list[FieldsOfScienceGet]:
+async def get_fields_of_science(response: Response, page: int = 0, page_size: int = DEFAULT_PAGE_SIZE, filter_query_params=Depends(get_filter_query_params), session=Depends(session_generator), is_authenticated=Depends(check_is_authenticated)) -> list[FieldsOfScienceGet]:
     """List the NSF fields of science reference table (read-only lookup)."""
-    return await list_endpoint(session, FieldsOfScienceTable, response, filter_query_params, page, page_size)
+    return await list_endpoint(session, FieldsOfScienceTable, response, filter_query_params, page, page_size, default_order_by=[FieldsOfScienceTable.fos_id])

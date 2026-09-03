@@ -13,8 +13,13 @@ user_load_options = [
 ]
 
 # Project endpoints return ProjectGetFull and eager-load these relationships here
-# (mirrors user_load_options for the user endpoints). ProjectGet is the light
-# base, kept for embedding a project inside other schemas (like UserGet).
+# (mirrors user_load_options for the user endpoints). ProjectGet is the intermediate
+# base ProjectGetFull inherits from and is not itself a response model anywhere -
+# other schemas embed JoinedProjectView, not ProjectGet.
+#
+# Project.college_and_department and Project.field_of_science are lazy="select", so
+# any new endpoint returning ProjectGetFull must pass these options or serialization
+# will raise MissingGreenlet on the async session.
 project_load_options = [
     selectinload(ProjectTable.college_and_department),
     selectinload(ProjectTable.field_of_science),

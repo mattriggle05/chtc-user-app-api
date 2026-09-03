@@ -35,8 +35,10 @@ def project_data_f(
         "access": access,
         "accounting_group": f"accounting-group-{rand}",
         "url": url if url else "http://example.com",
-        # FK fields default to None: college_and_departments has no rows in test,
-        # and a non-null fos_id would couple to seed contents. Pass explicitly to exercise them.
+        # FK fields default to None so callers that don't care about them stay
+        # decoupled from the seeded reference data. Both tables ARE populated in test
+        # (the migration seeds them), so pass real ids to exercise the relationships -
+        # see test_reference_tables.py, which reads them off the lookup endpoints.
         "college_and_department_id": college_and_department_id,
         "fos_id": fos_id,
         "ticket": ticket,

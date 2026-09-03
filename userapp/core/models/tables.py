@@ -95,16 +95,21 @@ class Project(Base):
 
 class CollegeAndDepartment(Base):
     __tablename__ = 'college_and_departments'
-    id = Column(Integer, primary_key=True, index=True)
+    # (college, department) is the natural key; the surrogate id is only stable within
+    # one database, so the pair is what identifies a row across environments.
+    __table_args__ = (
+        UniqueConstraint('college', 'department', name='uq_college_and_departments_college_department'),
+    )
+    id = Column(Integer, primary_key=True)
     college = Column(String(255))
     department = Column(String(255))
 
 class FieldsOfScience(Base):
     __tablename__ = 'fields_of_science'
-    fos_id = Column(String(16), primary_key=True, index=True)
+    fos_id = Column(String(16), primary_key=True)
     sed_cip_title = Column(String(255))
-    broad_field	= Column(String(255))
-    major_field	= Column(String(255))
+    broad_field = Column(String(255))
+    major_field = Column(String(255))
     detailed_field = Column(String(255))
 
 class SubmitNode(Base):
